@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html lang="zh-HK">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>凱帆軒 / 78小巴 班次倒數</title>
+    <style>
+        /* 針對 Kindle E-ink 螢幕優化的極簡高對比樣式 */
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #ffffff;
+            color: #000000;
+            margin: 0;
+            padding: 15px;
+        }
+        .header {
+            text-align: center;
+            border-bottom: 3px solid #000000;
+            padding-bottom: 10px;
+            margin-bottom: 20px;
+        }
+        #current-time {
+            font-size: 2.5rem;
+            font-weight: bold;
+            margin: 5px 0;
+        }
+        #current-date {
+            font-size: 1.2rem;
+            color: #444444;
+        }
+        .section {
+            margin-bottom: 25px;
+            border: 2px solid #000000;
+            padding: 15px;
+            border-radius: 5px;
+        }
+        .section-title {
+            font-size: 1.6rem;
+            font-weight: bold;
+            margin-top: 0;
+            margin-bottom: 10px;
+            border-bottom: 1px solid #000000;
+            padding-bottom: 5px;
+        }
+        .info-row {
+            font-size: 1.4rem;
+            margin: 8px 0;
+            display: flex;
+            justify-content: space-between;
+        }
+        .highlight {
+            font-weight: bold;
+            font-size: 1.6rem;
+            background-color: #000000;
+            color: #ffffff;
+            padding: 2px 6px;
+            border-radius: 3px;
+        }
+        .upcoming-list {
+            font-size: 1.1rem;
+            color: #555555;
+            margin-top: 10px;
+            border-top: 1px dashed #000000;
+            padding-top: 5px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="header">
+        <div id="current-date">載入中...</div>
+        <div id="current-time">00:00:00</div>
+    </div>
+
+    <!-- 凱帆軒穿梭巴士區塊 -->
+    <div class="section">
+        <div class="section-title">🚌 凱帆軒穿梭巴士 (往奧海城)</div>
+        <div class="info-row">
+            <span>下一班車：</span>
+            <span id="shuttle-next" class="highlight">--:--</span>
+        </div>
+        <div class="info-row">
+            <span>倒數時間：</span>
+            <span id="shuttle-countdown" style="font-weight: bold;">--分--秒</span>
+        </div>
+        <div class="upcoming-list">
+            隨後班次：<span id="shuttle-future">--</span>
+        </div>
+    </div>
+
+    <!-- 78號小巴區塊 -->
+    <div class="section">
+        <div class="section-title">🚐 78號專線小巴 (維港灣開)</div>
+        <div class="info-row">
+            <span>預計下一班：</span>
+            <span id="gmb-next" class="highlight">--:--</span>
+        </div>
+        <div class="info-row">
+            <span>倒數時間：</span>
+            <span id="gmb-countdown" style="font-weight: bold;">--分--秒</span>
+        </div>
+        <div class="upcoming-list">
+            隨後估算：<span id="gmb-future">--</span>
+        </div>
+    </div>
+
+    <script>
+        // 1. 穿梭巴士 (KR15) 固定時間表生成器
+        function getShuttleSchedules(isWeekend) {
+            let schedules = [];
+            if (!isWeekend) {
+                // 星期一至五 早上往奧海城一期 (07:00 - 08:55，每5分鐘一班)
+                for (let h = 7; h <= 8; h++) {
+                    for (let m = 0; m < 60; m += 5) {
+                        if (h === 8 && m > 55) break;
+                        schedules.push({ h, m });
+                    }
+                }
+                // 09:00 - 10:15 (每15分鐘一班)
+                schedules.push({h:9, m:0}, {h:9, m:8}, {h:9, m:15}, {h:9, m:23}, {h:9, m:30}, {h:9, m:38}, {h:9, m:45}, {h:9, m:53}, {h:10, m:0}, {h:10, m:8}, {h:10, m:15});
+            } else {
+                // 星期六、日及公眾假期 08:00 - 08:55 (每5分鐘一班)
+                for (let m = 0; m < 60; m += 5) {
+                    if (m > 55) break;
+                    schedules.push({ h: 8, m });
+                }
+                // 09:00 開始與平日白天大致相同
+                schedules.push({h:9, m:0}, {h:9, m:8}, {h:9, m:15}, {h:9, m:23}, {h:9, m:30}, {h:9, m:38}, {h:9, m:45}, {h:9, m:53}, {h:10, m:0}, {h:10, m:8}, {h:10, m:15});
+            }
+
+            // 共通白天及晚上標準班次 (10:15 - 22:30 大致15/30分鐘交替，此處採用標準法規班次主要骨幹優化簡化)
+            // 補充常見的每15/30分鐘日間班次
+            let dayTimes = [
+                {h:10, m:23}, {h:10, m:45}, {h:10, m:53}, {h:11, m:0}, {h:11, m:15}, {h:11, m:30}, {h:11, m:45},
+                {h:12, m:0}, {h:12, m:15}, {h:12, m:30}, {h:12, m:45}, {h:13, m:0}, {h:13, m:15}, {h:13, m:45},
+                {h:14, m:0}, {h:14, m:15}, {h:14, m:30}, {h:14, m:45}, {h:15, m:0}, {h:15, m:30}, {h:15, m:45},
+                {h:16, m:0}, {h:16, m:15}, {h:16, m:30}, {h:16, m:45}, {h:17, m:0}, {h:17, m:15}, {h:17, m:30}, {h:17, m:45},
+                {h:18, m:0}, {h:18, m:15}, {h:18, m:30}, {h:18, m:45}, {h:19, m:0}, {h:19, m:15}, {h:19, m:30}, {h:19, m:45},
+                {h:20, m:0}, {h:20, m:15}, {h:20, m:30}, {h:20, m:45}, {h:21, m:0}, {h:21, m:15}, {h:21, m:30}, {h:21, m:45},
+                {h:22, m:0}, {h:22, m:15}, {h:22, m:30}
+            ];
+            schedules = schedules.concat(dayTimes);
+            
+            if(isWeekend) { // 週末延長至23:00
+                schedules.push({h:22, m:45}, {h:23, m:0});
+            }
+
+            // 排序
+            return schedules.sort((a, b) => (a.h * 60 + a.m) - (b.h * 60 + b.m));
+        }
+
+        // 2. 78號小巴時間表生成器 (依官方班次間隔模擬固定到站)
+        function getGmbSchedules() {
+            let schedules = [];
+            // 06:30 - 23:30 服務
+            // 06:30 - 07:00 (14分鐘一班)
+            schedules.push({h:6, m:30}, {h:6, m:44}, {h:6, m:58});
+            // 07:00 - 10:00 (12分鐘一班)
+            for(let t = 7*60; t <= 10*60; t+=12) {
+                schedules.push({h: Math.floor(t/60), m: t%60});
+            }
+            // 10:00 - 16:30 (14分鐘一班)
+            for(let t = 10*60 + 12; t <= 16*60 + 30; t+=14) {
+                schedules.push({h: Math.floor(t/60), m: t%60});
+            }
+            // 16:30 - 19:30 (12分鐘一班)
+            for(let t = 16*60 + 42; t <= 19*60 + 30; t+=12) {
+                schedules.push({h: Math.floor(t/60), m: t%60});
+            }
+            // 19:30 - 23:30 (14分鐘一班)
+            for(let t = 19*60 + 44; t <= 23*60 + 30; t+=14) {
+                schedules.push({h: Math.floor(t/60), m: t%60});
+            }
+            return schedules;
+        }
+
+        function formatTimeStr(h, m) {
+            return (h < 10 ? '0' : '') + h + ':' + (m < 10 ? '0' : '') + m;
+        }
+
+        function updateDashboard() {
+            const now = new Date();
+            const currentMin = now.getHours() * 60 + now.getMinutes();
+            const currentSec = now.getSeconds();
+
+            // 更新時鐘
+            const daysTxt = ['星期日', '星期一', '星期二', '星期三', '星期四', '星期五', '星期六'];
+            document.getElementById('current-date').innerText = `${now.getFullYear()}年${now.getMonth()+1}月${now.getDate()}日 (${daysTxt[now.getDay()]})`;
+            document.getElementById('current-time').innerText = now.toTimeString().split(' ')[0];
+
+            const isWeekend = (now.getDay() === 0 || now.getDay() === 6);
+            
+            // --- 處理穿梭巴士倒數 ---
+            const shuttleList = getShuttleSchedules(isWeekend);
+            let nextShuttle = null;
+            let futureShuttles = [];
+
+            for (let bus of shuttleList) {
+                let busMin = bus.h * 60 + bus.m;
+                if (busMin > currentMin || (busMin === currentMin && currentSec === 0)) {
+                    if (!nextShuttle) {
+                        nextShuttle = bus;
+                    } else if (futureShuttles.length < 2) {
+                        futureShuttles.push(formatTimeStr(bus.h, bus.m));
+                    }
+                }
+            }
+
+            if (nextShuttle) {
+                let targetMin = nextShuttle.h * 60 + nextShuttle.m;
+                let diffSec = (targetMin - currentMin) * 60 - currentSec;
+                let remMin = Math.floor(diffSec / 60);
+                let remSec = diffSec % 60;
+
+                document.getElementById('shuttle-next').innerText = formatTimeStr(nextShuttle.h, nextShuttle.m);
+                document.getElementById('shuttle-countdown').innerText = `${remMin}分${remSec}秒`;
+                document.getElementById('shuttle-future').innerText = futureShuttles.join(', ') || '末班車後無班次';
+            } else {
+                document.getElementById('shuttle-next').innerText = '今日服務已完結';
+                document.getElementById('shuttle-countdown').innerText = '--分--秒';
+                document.getElementById('shuttle-future').innerText = '--';
+            }
+
+            // --- 處理78號小巴倒數 ---
+            const gmbList = getGmbSchedules();
+            let nextGmb = null;
+            let futureGmbs = [];
+
+            for (let gmb of gmbList) {
+                let gmbMin = gmb.h * 60 + gmb.m;
+                if (gmbMin > currentMin || (gmbMin === currentMin && currentSec === 0)) {
+                    if (!nextGmb) {
+                        nextGmb = gmb;
+                    } else if (futureGmbs.length < 2) {
+                        futureGmbs.push(formatTimeStr(gmb.h, gmb.m));
+                    }
+                }
+            }
+
+            if (nextGmb) {
+                let targetMin = nextGmb.h * 60 + nextGmb.m;
+                let diffSec = (targetMin - currentMin) * 60 - currentSec;
+                let remMin = Math.floor(diffSec / 60);
+                let remSec = diffSec % 60;
+
+                document.getElementById('gmb-next').innerText = formatTimeStr(nextGmb.h, nextGmb.m);
+                document.getElementById('gmb-countdown').innerText = `${remMin}分${remSec}秒`;
+                document.getElementById('gmb-future').innerText = futureGmbs.join(', ') || '末班車後無班次';
+            } else {
+                document.getElementById('gmb-next').innerText = '今日服務已完結';
+                document.getElementById('gmb-countdown').innerText = '--分--秒';
+                document.getElementById('gmb-future').innerText = '--';
+            }
+        }
+
+        // 每秒執行一次更新
+        setInterval(updateDashboard, 1000);
+        window.onload = updateDashboard;
+    </script>
+</body>
+</html>
